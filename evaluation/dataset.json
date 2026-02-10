@@ -1,0 +1,85 @@
+[
+  {
+    "conversation_id": "convo_1_personal_info",
+    "description": "Basic fact storage and retrieval about personal info.",
+    "turns": [
+      {
+        "turn_id": 1,
+        "user_input": "Hi, my name is Alex.",
+        "eval": {
+          "type": "store",
+          "expected_edges": [
+            {"src": "User", "relation": "is named", "dst": "Alex"}
+          ]
+        }
+      },
+      {
+        "turn_id": 2,
+        "user_input": "I live in Berlin.",
+        "eval": {
+          "type": "store",
+          "expected_edges": [
+            {"src": "User", "relation": "lives in", "dst": "Berlin"}
+          ]
+        }
+      },
+      {
+        "turn_id": 3,
+        "user_input": "What is my name?",
+        "eval": {
+          "type": "retrieve",
+          "expected_response_contains": ["Alex"]
+        }
+      },
+      {
+        "turn_id": 4,
+        "user_input": "Where do I live?",
+        "eval": {
+          "type": "retrieve",
+          "expected_response_contains": ["Berlin"]
+        }
+      },
+      {
+        "turn_id": 5,
+        "user_input": "Thanks, that's all.",
+        "eval": {
+          "type": "none"
+        }
+      }
+    ]
+  },
+  {
+    "conversation_id": "convo_2_preferences",
+    "description": "Storing and retrieving user preferences.",
+    "turns": [
+      {
+        "turn_id": 1,
+        "user_input": "I really like to drink coffee.",
+        "eval": {
+          "type": "store",
+          "expected_edges": [
+            {"src": "User", "relation": "likes to drink", "dst": "coffee"}
+          ]
+        }
+      },
+      {
+        "turn_id": 2,
+        "user_input": "My dog's name is Fido.",
+        "eval": {
+          "type": "store",
+          "expected_edges": [
+            {"src": "User's dog", "relation": "is named", "dst": "Fido"}
+          ]
+        }
+      },
+      {
+        "turn_id": 3,
+        "user_input": "What is my dog's name?",
+        "eval": {
+          "type": "retrieve",
+          "expected_response_contains": ["Fido"]
+        }
+      }
+    ]
+  }
+]

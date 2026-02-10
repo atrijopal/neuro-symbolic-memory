@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Symbolic Memory Agent</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Neuro-Symbolic Memory Agent</h1>
+        </header>
+        <main class="main-content">
+            <div class="chat-panel">
+                <div id="chat-window" class="chat-window">
+                    <!-- Chat messages will be appended here -->
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off">
+                    <button id="send-button">Send</button>
+                    <button id="reset-button">Reset Memory</button>
+                </div>
+            </div>
+            <div class="graph-panel">
+                <h2>Live Knowledge Graph</h2>
+                <div id="knowledge-graph" class="knowledge-graph"></div>
+            </div>
+        </main>
+    </div>
+
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.js"></script>
+    <script src="/static/main.js"></script>
+</body>
+</html>
