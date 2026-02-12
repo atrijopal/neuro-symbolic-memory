@@ -5,3 +5,7 @@ requests
 chromadb
 sentence-transformers
 python-dotenv
+neo4j
+cohere
+matplotlib
+networkx

@@ -5,7 +5,7 @@ from diagnostics.logger import log_event
 from config import MIN_CONFIDENCE_TO_STORE
 from reasoning.confidence import compute_confidence
 
-from memory.sqlite_store import SQLiteMemoryStore
+from memory.neo4j_store import Neo4jMemoryStore
 from memory.vector_store import VectorMemoryStore
 
 
@@ -18,7 +18,7 @@ def slow_pipe(
     """
     SLOW PIPE (WRITE PATH)
     - Extracts graph deltas using Phi
-    - Writes nodes + edges to SQLite
+    - Writes nodes + edges to Neo4j
     - NEVER raises
     """
 
@@ -26,7 +26,6 @@ def slow_pipe(
         # -------------------------
         # Step 1: Extraction (moved from fast pipe)
         # -------------------------
-        # If graph_delta is not provided, extract it now (background)
         from reasoning.extractor import extract_graph_delta
         
         if graph_delta is None:
@@ -49,9 +48,47 @@ def slow_pipe(
             return
 
         # -------------------------
-        # Step 4: Persist graph
+        # Step 3.5: Logic Bomb / Contradiction Check
         # -------------------------
-        store = SQLiteMemoryStore()
+        from reasoning.omniscience import detect_contradiction
+        
+        if graph_delta.get("edges"):
+            first_edge = graph_delta["edges"][0]
+            
+            # Check against existing knowledge
+            store_check = Neo4jMemoryStore()
+            try:
+                # Find facts about the same subject
+                # Limit to 5 most recent to save time/tokens
+                related_facts = store_check.driver.session().run(
+                    """
+                    MATCH (s:Entity {id: $src})-[r]-(o)
+                    RETURN s.id as src, type(r) as relation, o.id as dst
+                    ORDER BY r.last_updated DESC
+                    LIMIT 5
+                    """,
+                    src=first_edge['src']
+                )
+                
+                for record in related_facts:
+                    existing_fact = {
+                        "src": record["src"],
+                        "relation": record["relation"],
+                        "dst": record["dst"]
+                    }
+                    
+                    is_contradiction = detect_contradiction(first_edge, existing_fact)
+                    if is_contradiction:
+                        print(f"💣 [Logic Bomb] Contradiction detected vs '{existing_fact}'! Rejecting: {first_edge}")
+                        log_event("SLOW_PIPE_ABORT", reason="logic_bomb_contradiction", edge=first_edge, conflicting_with=existing_fact)
+                        return
+            finally:
+                store_check.close()
+
+        # -------------------------
+        # Step 4: Persist graph (Neo4j)
+        # -------------------------
+        store = Neo4jMemoryStore()
 
         # ---- Nodes ----
         for node in graph_delta.get("nodes", []):
@@ -62,19 +99,22 @@ def slow_pipe(
 
         # ---- Edges ----
         turn_id = len(ram_context.get(session_id) or [])
-        # Unique edge_id per turn to avoid primary key collision across turns
+        
         for idx, edge in enumerate(graph_delta.get("edges", [])):
+            # Use specific edge confidence if available, else fallback to global score
+            edge_confidence = edge.get("confidence", confidence)
+            
             store.insert_edge({
-                # edge_id is now handled by insert_edge with hashing
-                "edge_id": None, 
                 "src": edge["src"],
                 "dst": edge["dst"],
                 "relation": edge["relation"],
-                "confidence": confidence,
+                "confidence": edge_confidence,
                 "turn_id": turn_id,
                 "user_id": session_id,
                 "source_text": user_input,
             })
+            
+        store.close()
 
         # ---- Vector Store (Neural) ----
         # Store the raw text chunk for semantic retrieval

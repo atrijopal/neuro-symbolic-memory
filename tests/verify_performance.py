@@ -21,7 +21,7 @@ def test_fast_pipe_performance():
     print("Testing Fast Pipe Performance...")
     
     if not check_ollama():
-        print("⚠️ Ollama is not running. Performance test might fail or fallback.")
+        print("[!] Ollama is not running. Performance test might fail or fallback.")
     
     user_input = "I am testing the system performance."
     session_id = "perf_test_user"
@@ -35,9 +35,9 @@ def test_fast_pipe_performance():
     print(f"Duration: {duration:.4f} seconds")
     
     if duration < 1.0:
-        print("✅ Fast Pipe is FAST (< 1.0s)!")
+        print("[+] Fast Pipe is FAST (< 1.0s)!")
     else:
-        print("⚠️ Fast Pipe is slower than expected (check if using heavy model or if Ollama is slow).")
+        print("[!] Fast Pipe is slower than expected (check if using heavy model or if Ollama is slow).")
         
     # Check if slow pipe extraction was triggered (this is async, so we can't easily assert here without waiting/checking logs)
     print("Check logs for 'SLOW_PIPE_OK' to confirm background extraction.")

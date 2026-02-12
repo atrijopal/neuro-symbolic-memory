@@ -4,49 +4,71 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environments
-.env/
-.venv/
-env/
+.venv
 venv/
 ENV/
+env/
 
-# Configuration
-.env
-.cursor/
-
-# Data
-data/
-memory.db
-chroma/
-
-# Database
-*.db
-*.sqlite3
-
-# Logs
-*.log
-diagnostics/logs/
-
-# IDEs
-.idea/
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Data & Runtime
+data/
+*.db
+*.sqlite
+chroma/
+logs/
+
+# LaTeX Build Artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# Temporary Scripts
+fix_*.py
+force_reload.py
+read_pdf.py
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Model caches
+.cache/
+models/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Output files
+*.txt
+!requirements.txt
+*.png
+!static/*.png
+*.pdf
+!presentation.pdf
