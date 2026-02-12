@@ -31,8 +31,10 @@ class VectorMemoryStore:
         
         # Use the SentenceTransformer embedding function from chromadb utils
         # This will handle downloading and using the model specified in config.
+        # Explicitly specify device='cpu' to avoid torch meta tensor errors
         st_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=EMBEDDING_MODEL
+            model_name=EMBEDDING_MODEL,
+            device='cpu'
         )
 
         self.collection = self.client.get_or_create_collection(

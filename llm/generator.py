@@ -2,7 +2,7 @@
 
 import requests
 from typing import List, Dict
-from config import OLLAMA_BASE_URL, GENERATION_MODEL
+from config import OLLAMA_BASE_URL, GENERATION_MODEL, GENERATION_TEMPERATURE
 
 # Fallback when LLM is unavailable
 DEFAULT_FALLBACK = "I'm here. Could you rephrase or tell me a bit more?"
@@ -123,7 +123,7 @@ RULES:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                "temperature": 0.5,
+                "temperature": GENERATION_TEMPERATURE,
             },
             timeout=60,
         )

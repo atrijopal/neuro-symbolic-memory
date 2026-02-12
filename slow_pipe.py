@@ -2,7 +2,7 @@
 
 import uuid
 from diagnostics.logger import log_event
-from config import MIN_CONFIDENCE_TO_STORE
+from config import MIN_CONFIDENCE_TO_STORE, TRIVIAL_RELATIONS
 from reasoning.confidence import compute_confidence
 
 from memory.neo4j_store import Neo4jMemoryStore
@@ -48,42 +48,11 @@ def slow_pipe(
             return
 
         # -------------------------
-        # Step 3.5: Logic Bomb / Contradiction Check
+        # Step 3.5: Logic Bomb SKIPPED (already checked in fast_pipe)
         # -------------------------
-        from reasoning.omniscience import detect_contradiction
-        
-        if graph_delta.get("edges"):
-            first_edge = graph_delta["edges"][0]
-            
-            # Check against existing knowledge
-            store_check = Neo4jMemoryStore()
-            try:
-                # Find facts about the same subject
-                # Limit to 5 most recent to save time/tokens
-                related_facts = store_check.driver.session().run(
-                    """
-                    MATCH (s:Entity {id: $src})-[r]-(o)
-                    RETURN s.id as src, type(r) as relation, o.id as dst
-                    ORDER BY r.last_updated DESC
-                    LIMIT 5
-                    """,
-                    src=first_edge['src']
-                )
-                
-                for record in related_facts:
-                    existing_fact = {
-                        "src": record["src"],
-                        "relation": record["relation"],
-                        "dst": record["dst"]
-                    }
-                    
-                    is_contradiction = detect_contradiction(first_edge, existing_fact)
-                    if is_contradiction:
-                        print(f"💣 [Logic Bomb] Contradiction detected vs '{existing_fact}'! Rejecting: {first_edge}")
-                        log_event("SLOW_PIPE_ABORT", reason="logic_bomb_contradiction", edge=first_edge, conflicting_with=existing_fact)
-                        return
-            finally:
-                store_check.close()
+        # Contradiction checking now happens synchronously in fast_pipe
+        # If we reached here, the fact already passed the logic bomb check
+
 
         # -------------------------
         # Step 4: Persist graph (Neo4j)

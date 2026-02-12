@@ -61,6 +61,26 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 # -------------------------
+# LLM Parameters
+# -------------------------
+EXTRACTION_TEMPERATURE = float(os.getenv("EXTRACTION_TEMPERATURE", "0.0"))
+EXTRACTION_MAX_TOKENS = int(os.getenv("EXTRACTION_MAX_TOKENS", "256"))
+GENERATION_TEMPERATURE = float(os.getenv("GENERATION_TEMPERATURE", "0.5"))
+
+# -------------------------
+# Logic Bomb Configuration
+# -------------------------
+# Relations that should not trigger contradiction checks (meta-linguistic facts)
+TRIVIAL_RELATIONS = {
+    "verb_phrase", "VERB_PHRASE",
+    "greeting_phrase", "GREETING_PHRASE", 
+    "greeting_or_question", "GREETING_OR_QUESTION",
+    "unknown_location", "UNKNOWN_LOCATION",
+    "type", "TYPE",
+    "action", "ACTION"
+}
+
+# -------------------------
 # LLM API (if using Ollama / local server)
 # -------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

@@ -5,23 +5,40 @@ import re
 import requests
 from typing import Optional, Dict, Any
 from diagnostics.logger import log_event
-from config import OLLAMA_BASE_URL, EXTRACTION_MODEL
+from config import OLLAMA_BASE_URL, EXTRACTION_MODEL, EXTRACTION_TEMPERATURE, EXTRACTION_MAX_TOKENS
 
 
-# Minimal prompt: keep it simple for Phi/Gemma
+# Improved prompt with explicit location examples
 SYSTEM_PROMPT = """
 Return ONLY a JSON object describing a knowledge graph extracted from the user sentence.
 
 Schema:
 {
   "nodes": [{"id": "entity_name", "type": "category"}],
-  "edges": [{"id": "e1", "src": "User", "dst": "entity_name", "relation": "verb_phrase", "confidence": 1.0}]
+  "edges": [{"id": "e1", "src": "User", "dst": "entity_name", "relation": "RELATION_TYPE", "confidence": 1.0}]
 }
 
+Relation Types (use these specific types):
+- ORIGIN_FROM: for "I am from X", "I'm from X", "from X" (where X is a place/location)
+- LIVES_IN: for "I live in X"
+- NAME_IS: for "my name is X", "I'm X", "I am X"
+- MOTHER_NAME: for "my mom's name is X", "my mother is X"
+- FATHER_NAME: for "my dad's name is X", "my father is X"
+- LIKES: for "I like X", "I love X"
+- DISLIKES: for "I hate X", "I dislike X"
+- verb_phrase: ONLY for greetings, questions, or actions (NOT for personal facts)
+
+Examples:
+- "I am from Kerala" → {"edges": [{"id": "e1", "src": "User", "dst": "Kerala", "relation": "ORIGIN_FROM", "confidence": 1.0}]}
+- "I'm from UP" → {"edges": [{"id": "e1", "src": "User", "dst": "UP", "relation": "ORIGIN_FROM", "confidence": 1.0}]}
+- "my mom's name is Sita" → {"edges": [{"id": "e1", "src": "User", "dst": "Sita", "relation": "MOTHER_NAME", "confidence": 1.0}]}
+- "hi" → {"nodes": [], "edges": []}
+
 Rules:
-- Extract personal facts, preferences, locations, and simple family facts ("my mom's name is X").
-- Assign "confidence" (0.0 to 1.0) based on how certain the statement is (e.g., "I think I like X" -> 0.6, "I love X" -> 1.0).
-- For greetings or questions with no personal fact, return {"nodes": [], "edges": []}.
+- Extract personal facts, preferences, locations, and family facts.
+- Use SPECIFIC relation types above (not generic "verb_phrase" for facts).
+- Assign "confidence" (0.0 to 1.0): "I think" → 0.6, definite statements → 1.0.
+- For greetings/questions with no personal fact, return {"nodes": [], "edges": []}.
 - Do not output any text before or after the JSON object (no explanations, no code fences).
 """.strip()
 
@@ -95,8 +112,8 @@ def extract_graph_delta(text: str, max_retries: int = 2) -> Optional[Dict[str, A
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": text},
                 ],
-                "temperature": 0.0,
-                "max_tokens": 256,
+                "temperature": EXTRACTION_TEMPERATURE,
+                "max_tokens": EXTRACTION_MAX_TOKENS,
                 # Ask the OpenAI-compatible endpoint to enforce JSON if supported.
                 "response_format": {"type": "json_object"},
             }
@@ -159,28 +176,30 @@ def extract_graph_delta(text: str, max_retries: int = 2) -> Optional[Dict[str, A
                 log_event("EXTRACTOR_FAIL", reason="no_valid_edges")
                 return None
             
-            # Clean nodes
+            graph["edges"] = valid_edges
+            
+            # Validate and clean nodes
             valid_nodes = []
             for n in graph.get("nodes", []):
-                if isinstance(n, dict) and "id" in n:
-                    valid_nodes.append({
-                        "id": str(n["id"]),
-                        "type": str(n.get("type", "unknown")),
-                    })
+                if not isinstance(n, dict):
+                    continue
+                if "id" not in n:
+                    continue
+                clean_node = {
+                    "id": str(n["id"]),
+                    "type": str(n.get("type", "Entity")),
+                }
+                valid_nodes.append(clean_node)
             
-            result = {
-                "nodes": valid_nodes,
-                "edges": valid_edges,
-            }
+            graph["nodes"] = valid_nodes
             
-            log_event("EXTRACTOR_SUCCESS", nodes=len(valid_nodes), edges=len(valid_edges))
-            return result
+            return graph
             
-        except requests.RequestException as e:
+        except requests.exceptions.RequestException as e:
             if attempt < max_retries:
-                log_event("EXTRACTOR_RETRY", reason="request_error", error=str(e), attempt=attempt+1)
+                log_event("EXTRACTOR_RETRY", reason="network_error", attempt=attempt+1, error=str(e))
                 continue
-            log_event("EXTRACTOR_FAIL", reason="request_exception", error=str(e))
+            log_event("EXTRACTOR_FAIL", reason="network_error", error=str(e))
             return None
         except Exception as e:
             log_event("EXTRACTOR_FAIL", reason="unexpected_error", error=str(e))

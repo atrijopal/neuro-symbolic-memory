@@ -51,8 +51,72 @@ def fast_pipe(user_input: str, session_id: str, ram_context):
     start_time = time.time()
     memories = []
     
-    # NOTE: We no longer extract graph delta here. 
-    # It is extracted in the slow pipe to unblock the user response.
+    # -------------------------
+    # Step 0: FAST extraction + contradiction check (OPTIMIZED)
+    # -------------------------
+    # We need to extract early to check for contradictions BEFORE generating response
+    # Optimizations: Limit fact checks to 3, reuse connection, skip on empty extraction
+    graph_delta = extract_graph_delta(user_input)
+    
+    if graph_delta and graph_delta.get("edges"):
+        from reasoning.omniscience import detect_contradiction
+        from config import TRIVIAL_RELATIONS
+        
+        first_edge = graph_delta["edges"][0]
+        
+        # Only check meaningful facts for contradictions
+        if first_edge['relation'] not in TRIVIAL_RELATIONS:
+            log_event("LOGIC_BOMB_CHECK_START", edge=first_edge)
+            store_check = Neo4jMemoryStore()
+            try:
+                # OPTIMIZATION: Limit to 3 most recent facts (was 5) to reduce latency
+                related_facts = store_check.driver.session().run(
+                    """
+                    MATCH (s:Entity {id: $src})-[r]-(o)
+                    RETURN s.id as src, type(r) as relation, o.id as dst
+                    ORDER BY r.last_updated DESC
+                    LIMIT 3
+                    """,
+                    src=first_edge['src']
+                )
+                
+                fact_count = 0
+                for record in related_facts:
+                    fact_count += 1
+                    existing_fact = {
+                        "src": record["src"],
+                        "relation": record["relation"],
+                        "dst": record["dst"]
+                    }
+                    
+                    log_event("LOGIC_BOMB_COMPARING", new_fact=first_edge, existing_fact=existing_fact)
+                    
+                    # Skip if existing fact is trivial
+                    if existing_fact['relation'] in TRIVIAL_RELATIONS:
+                        log_event("LOGIC_BOMB_SKIP", reason="trivial_relation", fact=existing_fact)
+                        continue
+                    
+                    is_contradiction = detect_contradiction(first_edge, existing_fact)
+                    if is_contradiction:
+                        log_event("LOGIC_BOMB", reason="contradiction_blocked_before_response")
+                        # Return early with user-friendly message - NO storage happens
+                        response = "That contradicts what you told me earlier. I'll keep the original fact."
+                        
+                        return {
+                            "response": response,
+                            "memories_used": [],
+                            "newly_extracted_graph": None,
+                            "latency_ms": int((time.time() - start_time) * 1000)
+                        }
+                
+                log_event("LOGIC_BOMB_CHECK_COMPLETE", facts_checked=fact_count, contradiction_found=False)
+            finally:
+                store_check.close()
+        else:
+            log_event("LOGIC_BOMB_SKIP", reason="trivial_new_relation", relation=first_edge['relation'])
+    else:
+        # No edges extracted, set to None for slow_pipe
+        graph_delta = None
 
     try:
         # -------------------------
@@ -124,9 +188,9 @@ def fast_pipe(user_input: str, session_id: str, ram_context):
     )
 
     # -------------------------
-    # Step 4: Fire slow pipe for persistence (Extraction happens there now)
+    # Step 4: Fire slow pipe for persistence ONLY (extraction already done)
     # -------------------------
-    _executor.submit(slow_pipe, user_input, session_id, ram_context, graph_delta=None)
+    _executor.submit(slow_pipe, user_input, session_id, ram_context, graph_delta=graph_delta)
 
     # Return structured dictionary matching Hackathon Spec
     formatted_memories = []
