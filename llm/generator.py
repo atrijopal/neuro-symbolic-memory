@@ -64,9 +64,12 @@ RULES:
     if has_memory:
         memory_block = "Relevant facts (use ONLY these):\n"
         for m in memories:
-            if "content" in m:
+            if isinstance(m, str):
+                # Pre-formatted string (e.g. from ContextCompressor)
+                memory_block += f"{m}\n"
+            elif "content" in m:
                 # Vector memory (unstructured) - use as-is but mark as fact
-                content = str(m['content']).strip()
+                content = str(m.get('content', '')).strip()
                 if content:
                     memory_block += f"- {content}\n"
             else:

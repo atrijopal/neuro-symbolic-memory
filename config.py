@@ -32,6 +32,14 @@ else:
 
 
 # -------------------------
+# Neo4j Configuration
+# -------------------------
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+
+
+# -------------------------
 # Runtime parameters
 # -------------------------
 RAM_CONTEXT_SIZE = int(os.getenv("RAM_CONTEXT_SIZE", 8))
@@ -56,3 +64,9 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-
 # LLM API (if using Ollama / local server)
 # -------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# -------------------------
+# External APIs
+# -------------------------
+COHERE_API_KEY = os.getenv("COHERE_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")

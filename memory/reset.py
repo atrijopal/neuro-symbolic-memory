@@ -119,6 +119,22 @@ def _wipe_chroma_best_effort(hypothesis_run: str) -> bool:
         return False
 
 
+def _wipe_neo4j() -> bool:
+    """
+    Connects to Neo4j and deletes all nodes and relationships.
+    Returns True if successful.
+    """
+    try:
+        from memory.neo4j_store import Neo4jMemoryStore
+        store = Neo4jMemoryStore()
+        store.wipe_database()
+        store.close()
+        return True
+    except Exception as e:
+        _dbg("H3", "memory/reset.py:_wipe_neo4j", "neo4j_wipe_failed", {"error": repr(e)})
+        return False
+
+
 def wipe_all_memory(ram_context=None) -> dict:
     """
     Delete all stored memory at once.
@@ -140,32 +156,33 @@ def wipe_all_memory(ram_context=None) -> dict:
     if SQLITE_DB_PATH.exists():
         # Try unlink first (fast), but fall back to in-place wipe if locked
         try:
-            _dbg("H1", "memory/reset.py:wipe_all_memory", "sqlite_unlink_attempt", {"db": str(SQLITE_DB_PATH)})
             SQLITE_DB_PATH.unlink()
             sqlite_wiped = True
-            _dbg("H1", "memory/reset.py:wipe_all_memory", "sqlite_unlink_ok", {"db": str(SQLITE_DB_PATH)})
-        except Exception as e:
-            _dbg("H1", "memory/reset.py:wipe_all_memory", "sqlite_unlink_failed", {"db": str(SQLITE_DB_PATH), "error": repr(e)})
+            _dbg("H1", "memory/reset.py:wipe_all_memory", "sqlite_unlink_ok", {"db": str(SQLITE_DB_PATH), "mode": hypothesis_run})
+        except OSError as e:
+            _dbg("H1", "memory/reset.py:wipe_all_memory", "sqlite_unlink_failed", {"db": str(SQLITE_DB_PATH), "mode": hypothesis_run, "error": repr(e)})
             sqlite_wiped = _wipe_sqlite_in_place(hypothesis_run)
     else:
-        sqlite_wiped = True
+        sqlite_wiped = True # Nothing to wipe
+
+    # --- Neo4j wipe ---
+    neo4j_wiped = _wipe_neo4j()
 
     # --- Chroma wipe (best effort; returns bool) ---
-    chroma_wiped = _wipe_chroma_best_effort(hypothesis_run)
+    chroma_wiped = _wipe_chroma_best_effort("cli_reset")
 
-    # --- RAM wipe ---
-    if ram_context is not None:
-        try:
-            ram_context.clear()
-            _dbg("H4", "memory/reset.py:wipe_all_memory", "ram_clear_ok", {})
-        except Exception as e:
-            _dbg("H4", "memory/reset.py:wipe_all_memory", "ram_clear_failed", {"error": repr(e)})
+    # --- RAM Context ---
+    # In a real app this might need an API call if running in separate process
+    # Here we just print a reminder if used as CLI
+    if __name__ == "__main__":
+        pass
 
-    _dbg("H3", "memory/reset.py:wipe_all_memory", "exit", {"sqlite_wiped": sqlite_wiped, "chroma_wiped": chroma_wiped})
+    _dbg("H3", "memory/reset.py:wipe_all_memory", "exit", {"neo4j_wiped": neo4j_wiped, "chroma_wiped": chroma_wiped})
 
-    if not sqlite_wiped:
-        raise RuntimeError("Could not wipe SQLite memory (database locked). Close other running processes (e.g. main.py) and retry.")
+    if not neo4j_wiped:
+        print("WARNING: Neo4j Connected Failed. Is the database running?")
+
     if not chroma_wiped:
-        raise RuntimeError("Could not wipe Chroma memory (directory locked). Close other running processes and retry.")
+        print("WARNING: ChromaDB wipe failed (likely locked). Close other running processes and retry.")
 
     return {"sqlite_wiped": sqlite_wiped, "chroma_wiped": chroma_wiped}

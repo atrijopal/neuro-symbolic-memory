@@ -15,11 +15,12 @@ Return ONLY a JSON object describing a knowledge graph extracted from the user s
 Schema:
 {
   "nodes": [{"id": "entity_name", "type": "category"}],
-  "edges": [{"id": "e1", "src": "User", "dst": "entity_name", "relation": "verb_phrase"}]
+  "edges": [{"id": "e1", "src": "User", "dst": "entity_name", "relation": "verb_phrase", "confidence": 1.0}]
 }
 
 Rules:
 - Extract personal facts, preferences, locations, and simple family facts ("my mom's name is X").
+- Assign "confidence" (0.0 to 1.0) based on how certain the statement is (e.g., "I think I like X" -> 0.6, "I love X" -> 1.0).
 - For greetings or questions with no personal fact, return {"nodes": [], "edges": []}.
 - Do not output any text before or after the JSON object (no explanations, no code fences).
 """.strip()
@@ -150,6 +151,7 @@ def extract_graph_delta(text: str, max_retries: int = 2) -> Optional[Dict[str, A
                     "src": str(e["src"]),
                     "dst": str(e["dst"]),
                     "relation": str(e["relation"]),
+                    "confidence": float(e.get("confidence", 1.0)),
                 }
                 valid_edges.append(clean_edge)
             

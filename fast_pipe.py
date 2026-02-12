@@ -2,19 +2,26 @@
 
 import time
 import requests
-from concurrent.futures import ThreadPoolExecutor
+from requests.exceptions import ConnectionError
 
 from diagnostics.logger import log_event
-from llm.generator import generate_response, _is_question
-from memory.sqlite_store import SQLiteMemoryStore
+from llm.generator import generate_response
+from memory.neo4j_store import Neo4jMemoryStore
 from memory.vector_store import VectorMemoryStore
 from reasoning.extractor import extract_graph_delta
 from reasoning.reranker import rerank_memories
 from slow_pipe import slow_pipe
-from config import ASYNC_WORKERS, OLLAMA_BASE_URL, EXTRACTION_MODEL, TOP_K_MEMORIES
+from config import OLLAMA_BASE_URL, GENERATION_MODEL
+
+import concurrent.futures
+
+# Thread pool for background tasks (slow pipe)
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
 
-_executor = ThreadPoolExecutor(max_workers=ASYNC_WORKERS)
+def _is_question(text: str) -> bool:
+    """Simple heuristic to check if text is a question."""
+    return text.strip().endswith("?") or any(w in text.lower() for w in ["who", "what", "where", "when", "why", "how"])
 
 def _requires_memory(user_input: str) -> bool:
     """
@@ -38,7 +45,7 @@ def fast_pipe(user_input: str, session_id: str, ram_context):
     FAST PIPE (READ PATH) - OPTIMIZED
     - No synchronous extraction (moved to slow pipe)
     - Fast heuristic memory gating
-    - Deterministic and safe
+    - Retrieving from Neo4j + Chroma
     """
 
     start_time = time.time()
@@ -57,49 +64,50 @@ def fast_pipe(user_input: str, session_id: str, ram_context):
         # Step 2: Fast Semantic Gate
         # -------------------------
         if _requires_memory(user_input):
-            # 2a. Symbolic Search (Graph)
-            symbolic_memories = []
-            try:
-                sql_store = SQLiteMemoryStore()
-                symbolic_memories = sql_store.retrieve_edges_for_user(session_id)
-            except Exception as e:
-                log_event("FAST_PIPE_WARN", reason="symbolic_search_failed", error=str(e))
-
-            # 2b. Neural Search (Vector) - Filtered by session
+            
+            # A. Symbolic Retrieval (Neo4j)
+            neo4j_store = Neo4jMemoryStore()
+            symbolic_context = neo4j_store.retrieve_context(user_id=session_id)
+            neo4j_store.close()
+            # Note: symbolic_context is a list of dicts (edges)
+            
+            # B. Neural Retrieval (Vector)
+            vector_store = VectorMemoryStore()
+            # Fetch more candidates for reranking (n=10)
+            vector_results = vector_store.search(user_input, n_results=10, user_id=session_id)
+            
             neural_memories = []
-            try:
-                vec_store = VectorMemoryStore()
-                vec_results = vec_store.search(user_input, n_results=5, user_id=session_id)
-                docs = (vec_results.get("documents") or [[]])[0]
-                metadatas = (vec_results.get("metadatas") or [[]])[0]
+            if vector_results.get("documents"):
+                docs = vector_results["documents"][0]
+                metas = vector_results["metadatas"][0]
                 for i, doc in enumerate(docs):
-                    # Only include if metadata matches session (double-check)
-                    meta = metadatas[i] if i < len(metadatas) else {}
-                    if not session_id or meta.get("user_id") == session_id:
-                        neural_memories.append({
-                            "content": doc,
-                            "type": "vector",
-                            "metadata": meta,
-                        })
-            except Exception as e:
-                log_event("FAST_PIPE_WARN", reason="neural_search_failed", error=str(e))
+                    meta = metas[i] if i < len(metas) else {}
+                    neural_memories.append({
+                        "content": doc,
+                        "type": "vector",
+                        **meta
+                    })
 
-            # 2c. Hybrid Reranking
-            past_memories = rerank_memories(
-                query=user_input,
-                symbolic_memories=symbolic_memories,
-                neural_memories=neural_memories,
-                top_k=TOP_K_MEMORIES,
-            )
-            memories.extend(past_memories)
+            # C. Hybrid Fusion & Cohere Reranking
+            # We pass ALL candidates to the reranker
+            # The reranker will use the API to find the absolute best matches
+            memories = rerank_memories(user_input, symbolic_context, neural_memories, top_k=5)
 
         # -------------------------
-        # Step 3: Generate response
+        # Step 3: Context Compression
+        # -------------------------
+        from reasoning.compressor import ContextCompressor
+        compressor = ContextCompressor(max_chars=2000)
+        # Convert the list of best memories into a single optimized string
+        memory_context_str = compressor.compress(memories)
+        
+        # -------------------------
+        # Step 4: Generate response
         # -------------------------
         response = generate_response(
             user_input=user_input,
-            recent_turns=recent_turns, # This is passed but ignored in current generator (bug to fix later)
-            memories=memories,
+            recent_turns=recent_turns,
+            memories=[memory_context_str], # Pass as single item list to fit generator signature
             session_id=session_id,
         )
 
@@ -120,9 +128,28 @@ def fast_pipe(user_input: str, session_id: str, ram_context):
     # -------------------------
     _executor.submit(slow_pipe, user_input, session_id, ram_context, graph_delta=None)
 
-    # Return a structured dictionary for better testability and evaluation
+    # Return structured dictionary matching Hackathon Spec
+    formatted_memories = []
+    for m in memories:
+        # Check if it's a Neo4j memory (symbolic) or Vector memory (neural)
+        if "src" in m: # Symbolic
+            formatted_memories.append({
+                "memory_id": f"edge_{m.get('src')}_{m.get('dst')}",
+                "content": f"{m.get('src')} {m.get('relation')} {m.get('dst')}",
+                "origin_turn": m.get("turn_id", 0),
+                "last_used_turn": int(m.get("last_updated", 0))  # simplified timestamp as turn proxy
+            })
+        else: # Neural
+            formatted_memories.append({
+                "memory_id": f"vec_{hash(m.get('content', ''))}",
+                "content": m.get("content", ""),
+                "origin_turn": m.get("turn_id", 0), # Vector store might not have this yet, default 0
+                "last_used_turn": int(time.time())   # Current access
+            })
+
     return {
         "response": response,
-        "memories_used": memories,
-        "newly_extracted_graph": None, # No longer available immediately
+        "memories_used": formatted_memories,
+        "newly_extracted_graph": None,
+        "latency_ms": int((time.time() - start_time) * 1000)
     }

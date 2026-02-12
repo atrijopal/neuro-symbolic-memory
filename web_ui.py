@@ -102,36 +102,41 @@ async def chat_endpoint(chat_request: ChatRequest):
     )
     return result
 
-@app.get("/api/graph/{session_id}")
-async def get_full_graph(session_id: str):
-    """Retrieves the entire persisted knowledge graph for a given session."""
-    if not DB_PATH.exists():
-        return {"nodes": [], "edges": []}
-        
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+@app.get("/api/graph")
+async def get_graph():
+    """Returns the entire knowledge graph for visualization (Neo4j)."""
     try:
-        cursor.execute("SELECT DISTINCT src, dst, relation FROM edges WHERE user_id = ?", (session_id,))
-        edges_result = cursor.fetchall()
-        node_ids = {row['src'] for row in edges_result} | {row['dst'] for row in edges_result}
-        nodes = [{"id": node_id, "label": node_id} for node_id in node_ids]
-        edges = [{"from": r['src'], "to": r['dst'], "label": r['relation']} for r in edges_result]
-        return {"nodes": nodes, "edges": edges}
-    except Exception:
-        return {"nodes": [], "edges": []}
-    finally:
-        conn.close()
+        from memory.neo4j_store import Neo4jMemoryStore
+        store = Neo4jMemoryStore()
+        
+        # Fetch all nodes and edges
+        # Note: In a production app with huge graphs, you'd never do "MATCH (n) RETURN n"
+        # You would fetch a subgraph or use pagination.
+        with store.driver.session() as session:
+            # Get nodes
+            node_result = session.run("MATCH (n:Entity) RETURN n.id as id, n.type as type")
+            nodes = [{"id": r["id"], "group": 1} for r in node_result]
+            
+            # Get edges
+            edge_result = session.run("MATCH (s:Entity)-[r]->(d:Entity) RETURN s.id as src, d.id as dst, type(r) as label")
+            links = [{"source": r["src"], "target": r["dst"], "label": r["label"]} for r in edge_result]
+            
+        store.close()
+        return {"nodes": nodes, "links": links}
+
+    except Exception as e:
+        print(f"Graph retrieval error: {e}")
+        return {"nodes": [], "links": []}
+
 
 @app.post("/api/reset")
-async def reset_memory(chat_request: ChatRequest):
-    """Wipes all memory globally."""
+async def reset_memory():
+    """Wipes all memory (RAM, SQLite, Chroma, Neo4j)."""
     wipe_all_memory()
-    if chat_request.session_id in ram_context_store:
-        del ram_context_store[chat_request.session_id]
-    return {"status": "success", "message": "All memory has been wiped."}
+    # Clear RAM contexts
+    ram_context_store.clear()
+    return {"status": "ok", "message": "All memories wiped successfully."}
+
 
 if __name__ == "__main__":
-    print("Starting Neuro-Symbolic Memory UI...")
-    print("Open your browser to http://127.0.0.1:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -5,7 +5,7 @@ from diagnostics.logger import log_event
 from config import MIN_CONFIDENCE_TO_STORE
 from reasoning.confidence import compute_confidence
 
-from memory.sqlite_store import SQLiteMemoryStore
+from memory.neo4j_store import Neo4jMemoryStore
 from memory.vector_store import VectorMemoryStore
 
 
@@ -18,7 +18,7 @@ def slow_pipe(
     """
     SLOW PIPE (WRITE PATH)
     - Extracts graph deltas using Phi
-    - Writes nodes + edges to SQLite
+    - Writes nodes + edges to Neo4j
     - NEVER raises
     """
 
@@ -26,7 +26,6 @@ def slow_pipe(
         # -------------------------
         # Step 1: Extraction (moved from fast pipe)
         # -------------------------
-        # If graph_delta is not provided, extract it now (background)
         from reasoning.extractor import extract_graph_delta
         
         if graph_delta is None:
@@ -49,9 +48,9 @@ def slow_pipe(
             return
 
         # -------------------------
-        # Step 4: Persist graph
+        # Step 4: Persist graph (Neo4j)
         # -------------------------
-        store = SQLiteMemoryStore()
+        store = Neo4jMemoryStore()
 
         # ---- Nodes ----
         for node in graph_delta.get("nodes", []):
@@ -62,19 +61,22 @@ def slow_pipe(
 
         # ---- Edges ----
         turn_id = len(ram_context.get(session_id) or [])
-        # Unique edge_id per turn to avoid primary key collision across turns
+        
         for idx, edge in enumerate(graph_delta.get("edges", [])):
+            # Use specific edge confidence if available, else fallback to global score
+            edge_confidence = edge.get("confidence", confidence)
+            
             store.insert_edge({
-                # edge_id is now handled by insert_edge with hashing
-                "edge_id": None, 
                 "src": edge["src"],
                 "dst": edge["dst"],
                 "relation": edge["relation"],
-                "confidence": confidence,
+                "confidence": edge_confidence,
                 "turn_id": turn_id,
                 "user_id": session_id,
                 "source_text": user_input,
             })
+            
+        store.close()
 
         # ---- Vector Store (Neural) ----
         # Store the raw text chunk for semantic retrieval
