@@ -334,45 +334,6 @@ neuro-symbolic-memory/
 
 ###Utility Scripts (13 files)
 
-#### 39. `read_pdf.py` (1,313 bytes)
-- **Purpose:** Extract text from PDFs
-- **Usage:** `python read_pdf.py <file.pdf>`
-- **Library:** `pypdf`
-
-#### 40. `check_connection.py` (906 bytes)
-- **Purpose:** Verify Neo4j connectivity
-- **Usage:** `python check_connection.py`
-
-#### 41. `check_ollama.py` (1,630 bytes)
-- **Purpose:** Verify Ollama status and list models
-- **Usage:** `python check_ollama.py`
-
-#### 42. `check_syntax.py` (717 bytes)
-- **Purpose:** Check Python syntax of all files
-
-#### 43. `verify_all.py` (3,985 bytes)
-- **Purpose:** Comprehensive verification (syntax + imports)
-
-#### 44. `benchmark_real.py` (4,487 bytes) ⭐ **JUST CREATED**
-- **Purpose:** Real latency benchmarks
-- **Usage:** `python benchmark_real.py`
-- **Measurements:** Generation, Extraction, Neo4j, Full Pipeline
-
-#### 45. `generate_plots.py` (2,488 bytes)
-- **Purpose:** Generate performance charts
-
-#### 46. `verify_conversation_script.py` (2,112 bytes)
-- **Purpose:** Simulate full conversation test
-
-#### 47. `verify_extractor_script.py` (3,653 bytes)
-- **Purpose:** Test extraction with multiple inputs
-
-#### 48. `del.py` (2,404 bytes)
-- **Purpose:** Delete specific graph nodes
-
-#### 49. `debug_test.py` (1,197 bytes)
-- **Purpose:** Debug contradiction detection
-
 #### 50. `diagnostics/logger.py`
 - **Purpose:** Event logging utilities
 
