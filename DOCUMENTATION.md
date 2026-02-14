@@ -1056,5 +1056,5 @@ Total Project Size: ~250 MB
 
 **END OF COMPREHENSIVE DOCUMENTATION**
 
-**Generated:** 2026-02-12 15:17 IST  
+**Made by:** Atrijo Pal, IITG ECE 2029  
 **Next Steps:** Review this document and run the demos!
